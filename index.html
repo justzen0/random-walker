@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Walk Generator</title>
+    <!-- Leaflet CSS for the Map Preview -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f4; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; background: white; min-height: 100vh; }
+        h1 { text-align: center; color: #333; }
+        .controls { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; }
+        label { font-weight: bold; }
+        input[type="number"] { padding: 10px; font-size: 16px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 15px; font-size: 18px; background-color: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
+        button:hover { background-color: #218838; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #map { height: 400px; width: 100%; border-radius: 8px; margin-bottom: 20px; z-index: 1; }
+        .result-box { text-align: center; display: none; }
+        .gmaps-btn { display: inline-block; text-decoration: none; background-color: #4285F4; color: white; padding: 15px 30px; border-radius: 30px; font-weight: bold; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🚶 Random Walker</h1>
+    <p>Generate a random loop starting and ending at your current location.</p>
+
+    <div class="controls">
+        <div>
+            <label for="distance">Target Distance (km)</label>
+            <input type="number" id="distance" value="5" min="1" max="20" step="0.5">
+        </div>
+        <button id="generateBtn" onclick="generateRoute()">Generate Walk</button>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="result" class="result-box">
+        <h3>Route Generated!</h3>
+        <p>This path is an approximation. Click below to open real walking directions.</p>
+        <a id="gmapsLink" href="#" target="_blank" class="gmaps-btn">Open in Google Maps</a>
+    </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // Initialize Map
+    let map = L.map('map').setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let currentLat = null;
+    let currentLon = null;
+    let routeLayer = null;
+
+    // 1. Get User Location on Load
+    if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(position => {
+            currentLat = position.coords.latitude;
+            currentLon = position.coords.longitude;
+            map.setView([currentLat, currentLon], 14);
+            L.marker([currentLat, currentLon]).addTo(map).bindPopup("You are here").openPopup();
+        }, error => {
+            alert("Please allow location access to use this app.");
+        });
+    } else {
+        alert("Geolocation is not supported by this browser.");
+    }
+
+    // 2. Math: Generate Random Point (JavaScript version of your Python function)
+    function getRandomPointInCircle(lat, lon, radiusKm) {
+        const R = 6371; // Earth radius
+        const r = radiusKm * Math.sqrt(Math.random());
+        const theta = Math.random() * 2 * Math.PI;
+
+        const latRad = lat * (Math.PI / 180);
+        const lonRad = lon * (Math.PI / 180);
+
+        const newLatRad = Math.asin(Math.sin(latRad) * Math.cos(r / R) + 
+                          Math.cos(latRad) * Math.sin(r / R) * Math.cos(theta));
+        
+        const newLonRad = lonRad + Math.atan2(Math.sin(theta) * Math.sin(r / R) * Math.cos(latRad), 
+                           Math.cos(r / R) - Math.sin(latRad) * Math.sin(newLatRad));
+
+        return {
+            lat: newLatRad * (180 / Math.PI),
+            lng: newLonRad * (180 / Math.PI)
+        };
+    }
+
+    // 3. Main Logic
+    function generateRoute() {
+        if (!currentLat || !currentLon) {
+            alert("Waiting for location... make sure GPS is on.");
+            return;
+        }
+
+        const targetDist = parseFloat(document.getElementById('distance').value);
+        // We approximate that a Triangle with these parameters will result in a walking 
+        // distance roughly close to the target. 
+        // Radius is roughly (Total Dist / 3) to create a loop.
+        const radius = targetDist / 3.0; 
+
+        // Generate 2 random waypoints
+        const pointA = getRandomPointInCircle(currentLat, currentLon, radius);
+        const pointB = getRandomPointInCircle(currentLat, currentLon, radius);
+
+        // Update UI Map (Draw a triangle)
+        if (routeLayer) map.removeLayer(routeLayer);
+        const latlngs = [
+            [currentLat, currentLon],
+            [pointA.lat, pointA.lng],
+            [pointB.lat, pointB.lng],
+            [currentLat, currentLon] // Close the loop
+        ];
+        
+        routeLayer = L.polyline(latlngs, {color: 'blue', dashArray: '5, 10'}).addTo(map);
+        map.fitBounds(routeLayer.getBounds());
+
+        // Generate Google Maps URL
+        // Format: https://www.google.com/maps/dir/Start/PointA/PointB/Start
+        const baseUrl = "https://www.google.com/maps/dir/";
+        const coordsPath = `${currentLat},${currentLon}/${pointA.lat},${pointA.lng}/${pointB.lat},${pointB.lng}/${currentLat},${currentLon}/`;
+        const finalUrl = baseUrl + coordsPath + "data=!4m2!4m1!3e2"; // 3e2 = Walking mode
+
+        // Show Button
+        document.getElementById('gmapsLink').href = finalUrl;
+        document.getElementById('result').style.display = 'block';
+    }
+</script>
+
+</body>
+</html>
