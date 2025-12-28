@@ -3,134 +3,259 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Random Walk Generator</title>
-    <!-- Leaflet CSS for the Map Preview -->
+    <title>Random Walk Generator v2</title>
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f4; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; background: white; min-height: 100vh; }
-        h1 { text-align: center; color: #333; }
-        .controls { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; }
-        label { font-weight: bold; }
-        input[type="number"] { padding: 10px; font-size: 16px; border: 1px solid #ddd; border-radius: 4px; }
-        button { padding: 15px; font-size: 18px; background-color: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
-        button:hover { background-color: #218838; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        #map { height: 400px; width: 100%; border-radius: 8px; margin-bottom: 20px; z-index: 1; }
-        .result-box { text-align: center; display: none; }
-        .gmaps-btn { display: inline-block; text-decoration: none; background-color: #4285F4; color: white; padding: 15px 30px; border-radius: 30px; font-weight: bold; margin-top: 10px; }
+        :root { --primary: #2563eb; --surface: #ffffff; --bg: #f3f4f6; --text: #1f2937; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+        
+        /* Layout */
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .card { background: var(--surface); border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; }
+        
+        /* Headers */
+        h1 { margin-top: 0; font-size: 1.5rem; color: var(--primary); display: flex; align-items: center; gap: 10px; }
+        .badge { background: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 99px; font-size: 0.8rem; }
+
+        /* Inputs Grid */
+        .input-group { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        @media (max-width: 600px) { .input-group { grid-template-columns: 1fr; } }
+        
+        label { display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 5px; }
+        input { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
+        .hint { font-size: 0.8rem; color: #6b7280; margin-top: 4px; display: block; }
+
+        /* Buttons */
+        .btn-main { width: 100%; padding: 15px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
+        .btn-main:hover { opacity: 0.9; }
+        .btn-gmaps { display: block; width: 100%; text-align: center; background: #10b981; color: white; text-decoration: none; padding: 15px; border-radius: 8px; font-weight: bold; margin-top: 15px; box-sizing: border-box;}
+
+        /* Map */
+        #map { height: 400px; width: 100%; border-radius: 8px; z-index: 1; }
+        
+        /* Loading/Stats */
+        .stats { display: flex; justify-content: space-between; background: #f8fafc; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.9rem; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>🚶 Random Walker</h1>
-    <p>Generate a random loop starting and ending at your current location.</p>
+    <div class="card">
+        <h1>
+            <span>🚶 Random Walker</span> 
+            <span class="badge">v2.0</span>
+        </h1>
+        <p style="color: #666; margin-bottom: 20px;">Generate an organic 8-point walking loop starting from your location.</p>
 
-    <div class="controls">
-        <div>
-            <label for="distance">Target Distance (km)</label>
-            <input type="number" id="distance" value="5" min="1" max="20" step="0.5">
+        <div class="input-group">
+            <div>
+                <label>Max Radius (km)</label>
+                <input type="number" id="radiusInput" value="1.5" step="0.1" min="0.5">
+                <span class="hint">How far from home are you willing to go?</span>
+            </div>
+            <!-- Note: Distance is approximate in the generator, logic prioritizes shape -->
+            <div>
+                <label>Shape Spread</label>
+                <select id="spreadInput" style="width:100%; padding:10px; border-radius:6px; border:1px solid #ddd;">
+                    <option value="0.5">Compact (Dense)</option>
+                    <option value="1.0" selected>Balanced</option>
+                    <option value="1.5">Wide (Sprawling)</option>
+                </select>
+                <span class="hint">Adjusts how "round" vs "spiky" the path is.</span>
+            </div>
         </div>
-        <button id="generateBtn" onclick="generateRoute()">Generate Walk</button>
+
+        <button class="btn-main" onclick="generateWalk()">Generate New Path</button>
     </div>
 
-    <div id="map"></div>
-
-    <div id="result" class="result-box">
-        <h3>Route Generated!</h3>
-        <p>This path is an approximation. Click below to open real walking directions.</p>
-        <a id="gmapsLink" href="#" target="_blank" class="gmaps-btn">Open in Google Maps</a>
+    <div class="card" id="resultsArea" style="display:none;">
+        <div id="map"></div>
+        <div class="stats">
+            <span id="statPoints">Points: 8</span>
+            <span id="statEstDist">Est. Air Distance: calculating...</span>
+        </div>
+        <a id="gmapsLink" href="#" target="_blank" class="btn-gmaps">Open Route in Google Maps</a>
+        <p style="font-size: 0.8rem; color: #666; text-align: center; margin-top: 10px;">
+            Note: Google Maps will snap these points to the nearest roads, so the actual walk length will vary.
+        </p>
     </div>
 </div>
 
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // Initialize Map
-    let map = L.map('map').setView([0, 0], 2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+    // --- Configuration ---
+    let map, userMarker, pathLayer, pointMarkers = [];
+    let currentLat, currentLon;
 
-    let currentLat = null;
-    let currentLon = null;
-    let routeLayer = null;
+    // --- Helper Math Functions ---
+    const toRad = (d) => d * Math.PI / 180;
+    const toDeg = (r) => r * 180 / Math.PI;
 
-    // 1. Get User Location on Load
-    if ("geolocation" in navigator) {
-        navigator.geolocation.getCurrentPosition(position => {
-            currentLat = position.coords.latitude;
-            currentLon = position.coords.longitude;
-            map.setView([currentLat, currentLon], 14);
-            L.marker([currentLat, currentLon]).addTo(map).bindPopup("You are here").openPopup();
-        }, error => {
-            alert("Please allow location access to use this app.");
-        });
-    } else {
-        alert("Geolocation is not supported by this browser.");
+    // Calculate a point given distance and bearing from start
+    function getDestinationPoint(lat, lon, distKm, bearingDeg) {
+        const R = 6371; // Earth Radius
+        const d = distKm;
+        const brng = toRad(bearingDeg);
+        const lat1 = toRad(lat);
+        const lon1 = toRad(lon);
+
+        const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d/R) + Math.cos(lat1) * Math.sin(d/R) * Math.cos(brng));
+        const lon2 = lon1 + Math.atan2(Math.sin(brng) * Math.sin(d/R) * Math.cos(lat1), Math.cos(d/R) - Math.sin(lat1) * Math.sin(lat2));
+
+        return { lat: toDeg(lat2), lng: toDeg(lon2) };
     }
 
-    // 2. Math: Generate Random Point (JavaScript version of your Python function)
-    function getRandomPointInCircle(lat, lon, radiusKm) {
-        const R = 6371; // Earth radius
-        const r = radiusKm * Math.sqrt(Math.random());
-        const theta = Math.random() * 2 * Math.PI;
-
-        const latRad = lat * (Math.PI / 180);
-        const lonRad = lon * (Math.PI / 180);
-
-        const newLatRad = Math.asin(Math.sin(latRad) * Math.cos(r / R) + 
-                          Math.cos(latRad) * Math.sin(r / R) * Math.cos(theta));
-        
-        const newLonRad = lonRad + Math.atan2(Math.sin(theta) * Math.sin(r / R) * Math.cos(latRad), 
-                           Math.cos(r / R) - Math.sin(latRad) * Math.sin(newLatRad));
-
-        return {
-            lat: newLatRad * (180 / Math.PI),
-            lng: newLonRad * (180 / Math.PI)
-        };
+    // Get simple distance between two points (Haversine omitted for brevity, using Euclidean approx for short walks is fine visually)
+    function getDist(p1, p2) {
+        return Math.sqrt(Math.pow(p1.lat - p2.lat, 2) + Math.pow(p1.lng - p2.lng, 2));
     }
 
-    // 3. Main Logic
-    function generateRoute() {
-        if (!currentLat || !currentLon) {
-            alert("Waiting for location... make sure GPS is on.");
+    // --- Core Logic ---
+
+    function initMap() {
+        if (!navigator.geolocation) {
+            alert("Geolocation is not supported by your browser");
             return;
         }
 
-        const targetDist = parseFloat(document.getElementById('distance').value);
-        // We approximate that a Triangle with these parameters will result in a walking 
-        // distance roughly close to the target. 
-        // Radius is roughly (Total Dist / 3) to create a loop.
-        const radius = targetDist / 3.0; 
+        navigator.geolocation.getCurrentPosition((pos) => {
+            currentLat = pos.coords.latitude;
+            currentLon = pos.coords.longitude;
 
-        // Generate 2 random waypoints
-        const pointA = getRandomPointInCircle(currentLat, currentLon, radius);
-        const pointB = getRandomPointInCircle(currentLat, currentLon, radius);
+            // Init Leaflet
+            map = L.map('map').setView([currentLat, currentLon], 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap'
+            }).addTo(map);
 
-        // Update UI Map (Draw a triangle)
-        if (routeLayer) map.removeLayer(routeLayer);
-        const latlngs = [
-            [currentLat, currentLon],
-            [pointA.lat, pointA.lng],
-            [pointB.lat, pointB.lng],
-            [currentLat, currentLon] // Close the loop
-        ];
-        
-        routeLayer = L.polyline(latlngs, {color: 'blue', dashArray: '5, 10'}).addTo(map);
-        map.fitBounds(routeLayer.getBounds());
-
-        // Generate Google Maps URL
-        // Format: https://www.google.com/maps/dir/Start/PointA/PointB/Start
-        const baseUrl = "https://www.google.com/maps/dir/";
-        const coordsPath = `${currentLat},${currentLon}/${pointA.lat},${pointA.lng}/${pointB.lat},${pointB.lng}/${currentLat},${currentLon}/`;
-        const finalUrl = baseUrl + coordsPath + "data=!4m2!4m1!3e2"; // 3e2 = Walking mode
-
-        // Show Button
-        document.getElementById('gmapsLink').href = finalUrl;
-        document.getElementById('result').style.display = 'block';
+            userMarker = L.marker([currentLat, currentLon]).addTo(map)
+                .bindPopup("Start/End").openPopup();
+                
+        }, () => alert("Unable to retrieve your location. Please allow GPS access."));
     }
+
+    function generateWalk() {
+        if (!currentLat) { alert("Still finding location..."); return; }
+
+        const radiusKm = parseFloat(document.getElementById('radiusInput').value);
+        const spreadFactor = parseFloat(document.getElementById('spreadInput').value);
+        
+        // 1. Define a "Hub" for the walk. 
+        // Instead of walking around the house, we pick a random center point 
+        // that is (Radius * 0.5) away from home. This ensures the loop goes "somewhere".
+        const hubAngle = Math.random() * 360;
+        const hubDist = radiusKm * 0.6; 
+        const hub = getDestinationPoint(currentLat, currentLon, hubDist, hubAngle);
+
+        // 2. Generate 7 random points around that Hub
+        let waypoints = [];
+        // Add Home as the first point
+        waypoints.push({lat: currentLat, lng: currentLon, id: 'start'});
+
+        for (let i = 0; i < 7; i++) {
+            // Random angle
+            const angle = Math.random() * 360;
+            // Random distance from Hub (up to remaining radius)
+            // Using sqrt(random) for uniform distribution in circle
+            const dist = (radiusKm * spreadFactor) * Math.sqrt(Math.random()); 
+            waypoints.push(getDestinationPoint(hub.lat, hub.lng, dist, angle));
+        }
+
+        // 3. Sort points Angularly to prevent Criss-Crossing
+        // Calculate Centroid of all points
+        let sumLat = 0, sumLng = 0;
+        waypoints.forEach(p => { sumLat += p.lat; sumLng += p.lng; });
+        const centerLat = sumLat / waypoints.length;
+        const centerLng = sumLng / waypoints.length;
+
+        // Sort by angle relative to centroid
+        waypoints.sort((a, b) => {
+            const angleA = Math.atan2(a.lat - centerLat, a.lng - centerLng);
+            const angleB = Math.atan2(b.lat - centerLat, b.lng - centerLng);
+            return angleA - angleB;
+        });
+
+        // 4. Rotate array so Home is the first element
+        const homeIndex = waypoints.findIndex(p => p.id === 'start');
+        const sortedPoints = [
+            ...waypoints.slice(homeIndex), 
+            ...waypoints.slice(0, homeIndex)
+        ];
+
+        // 5. Close the loop (Add home to the end)
+        sortedPoints.push(sortedPoints[0]);
+
+        drawRoute(sortedPoints);
+    }
+
+    function drawRoute(points) {
+        document.getElementById('resultsArea').style.display = 'block';
+
+        // Clear previous layers
+        if (pathLayer) map.removeLayer(pathLayer);
+        pointMarkers.forEach(m => map.removeLayer(m));
+        pointMarkers = [];
+
+        // Draw Line
+        const latLngs = points.map(p => [p.lat, p.lng]);
+        pathLayer = L.polyline(latLngs, {color: '#2563eb', weight: 4, opacity: 0.7}).addTo(map);
+
+        // Add numbered markers (skip the last one as it duplicates start)
+        for(let i=1; i < points.length - 1; i++) {
+            const mk = L.circleMarker([points[i].lat, points[i].lng], {
+                radius: 8,
+                fillColor: '#fff',
+                color: '#2563eb',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 1
+            }).bindTooltip(String(i), {permanent: true, direction: 'center', className: 'no-bg'}).addTo(map);
+            pointMarkers.push(mk);
+        }
+
+        map.fitBounds(pathLayer.getBounds(), {padding: [50, 50]});
+
+        // Generate Google Maps Link
+        // Format: /dir/Start/P1/P2.../End
+        const baseUrl = "https://www.google.com/maps/dir/";
+        const coords = points.map(p => `${p.lat},${p.lng}`).join('/');
+        const finalUrl = `${baseUrl}${coords}/data=!4m2!4m1!3e2`; // 3e2 = walking
+
+        document.getElementById('gmapsLink').href = finalUrl;
+
+        // Calc Rough Perimeter (Crow flies)
+        let totalDist = 0;
+        for(let i=0; i<points.length-1; i++) {
+            // Rough conversion deg to km
+            const dLat = points[i+1].lat - points[i].lat;
+            const dLng = points[i+1].lng - points[i].lng;
+            // Very rough Euclidean approx for display only (deg -> km approx 111)
+            const dist = Math.sqrt(dLat*dLat + dLng*dLng) * 111; 
+            totalDist += dist;
+        }
+        // Multiply by 1.3 to estimate actual walking distance (streets aren't straight)
+        document.getElementById('statEstDist').innerText = `Est. Walking Dist: ~${(totalDist * 1.3).toFixed(2)} km`;
+    }
+
+    // Initialize on load
+    window.addEventListener('load', initMap);
+
+    // Custom CSS for map numbers
+    const style = document.createElement('style');
+    style.innerHTML = `
+        .leaflet-tooltip.no-bg { 
+            background: transparent; 
+            border: none; 
+            box-shadow: none; 
+            color: #2563eb; 
+            font-weight: bold; 
+            font-size: 10px;
+        }
+    `;
+    document.head.appendChild(style);
+
 </script>
 
 </body>
